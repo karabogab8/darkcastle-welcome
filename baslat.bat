@@ -1,8 +1,7 @@
 echo off
-title dev by where was i
+title Welcome Bot ! :)
 color a
 cls
 :a
 node main.js
 goto a
-pause

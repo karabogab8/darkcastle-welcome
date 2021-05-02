@@ -1,81 +1,46 @@
-const Discord = require("discord.js")     
-const client = new Discord.Client();       
-const serverconfig = require("./vupsy/configs/serverconfig.json")   
-const logconfig = require("./vupsy/configs/logconfig.json") 
-const rolconfig = require("./vupsy/configs/rolconfig.json")
-const {prefix} = require("./vupsy/configs/serverconfig.json")
-const emojiconfig = require("./vupsy/configs/emojiconfig.json")
-const fs = require("fs");    
-const moment = require("moment");            
-require('./vupsy/util/Loader.js')(client);
-require('./vupsy/events/guildMemberAdd.js')(client);
-client.commands = new Discord.Collection(); 
-client.aliases = new Discord.Collection();  
-const cooldowns = new Discord.Collection();
+const { Client, Collection, VoiceChannel } = require('discord.js')
+const client = new Client()
+const Discord = require("discord.js")
+const ytdl = require('ytdl-core')
+const settings = './config.yaml'
+const fs = require('fs')
+const YAML = require("yawn-yaml/cjs")
+const { load } = require("js-yaml")
+const db = require('megadb')
+const voiceState = new db.crearDB('VoiceState');
 
- const commandFiles = fs.readdirSync("./vupsy/commands/").filter(file => file.endsWith(".js"));
- console.log(`${commandFiles.length} Komut Yükleniyor...`); 
- commandFiles.forEach(file => {
-  
-    const command = require(`./vupsy/commands/${file}`)
-    client.commands.set(command.name, command);
-    
-     
-  
-    
- });
- console.log(`Pirates Online ❤️`)  
+let config = new YAML(fs.readFileSync("./config.yaml").toString()).json
 
-     
+console.log(config.server)
 
-//LOGİN//
-client.login(serverconfig.token)
-//LOGİN
+client.login(config.bot.token).then(() => console.log(`[${client.user.tag}] Başarıyla Giriş yaptım!`)).catch(() => console.error(`Yanlış Bir Token Girdiniz.`))
 
+client.on("ready", () => {
+      client.user.setPresence({ activity: { name: `Pirates ❤️` , type: "PLAYING"}, status: 'idle' })
+    let vc = client.channels.cache.get(config.server.voiceChannel)
+    if (!vc) throw console.error("Config.yaml da voiceChannel için bir ses kanal idi girmelisiniz.")
+    if (!vc instanceof VoiceChannel) throw new TypeError("Belirttiğiniz kanal bir ses kanalı değil")
+          vc.join().then(() => console.log(`Ses kanalına başarıyla bağlandım`)).catch(() => console.error(`Ses kanalına bağlanırken bir sorun oluştu!`))
+})
 
-client.on('message', (message) => {
- 
- const args = message.content.slice(prefix.length).trim().split(/ +/)
- const commandName = args.shift().toLowerCase();
- 
- const command = client.commands.get(commandName) || client.commands.find(cmd => cmd.aliases && cmd.aliases.includes(commandName));
+client.on("voiceStateUpdate", async(oldState, newState) => {
+  if (!oldState.channelID && newState.channelID && newState.member.id != client.user.id) {
+      let staffs = newState.guild.roles.cache.get(config.server.register).members.map(x => x.id) // YETKİLİ ROL
+      if(newState.channelID === config.server.voiceChannel) {
+        let vc = await newState.channel.join()
+      if (newState.channel.members.some(r => !staffs.includes(newState.member.id)) && newState.channel.members.some(r => !r.hasPermission('ADMINISTRATOR'))) { //Yetkili yok hoşgeldin oynatma
+              //https://dm0qx8t0i9gc9.cloudfront.net/previews/audio/BsTwCwBHBjzwub4i4/jg-032316-sfx-elearning-phrases-welcome--female_NWM.mp3
 
-
- if(!message.content.startsWith(prefix) || !command) return; 
-
- if((command.guildOnly === true) && (message.channel.type === "dm")) return message.reply("Komutu Sadece Sunucuda Kullan!");
- 
-if(!cooldowns.has(command.name)){
-  cooldowns.set(command.name, new Discord.Collection());
-}
-const timestamps = cooldowns.get(command.name)
-const now = Date.now();
-const cooldownAmount = (command.cooldown || 5) * 1000;
-  if(timestamps.has(message.author.id)){
-    const expirationTime = timestamps.get(message.author.id) + cooldownAmount;
-    if(expirationTime > now){
-       const timeLeft = (expirationTime - now) / 1000;
-       return message.channel.send(`Bu komutu tekrar kullanabilmek için ${parseInt(timeLeft)} saniye bekleyin.`);
-       
+          let taglıAlım = await voiceState.get(`taglıAlım.${newState.guild.id}`)
+          if (taglıAlım) {
+            return vc.play(config.server.tagliAlim)
+          } else if(!taglıAlım) {
+            return vc.play(config.server.toplantı)
+          }
+      } else {
+        return vc.play(config.server.yetkiliGiris)
+      }
     }
   }
-timestamps.set(message.author.id, now);
-setTimeout(() => {  
-  timestamps.delete(message.author.id);
-
-}, cooldownAmount);
-
-
-
-try{
-  command.run(message,args);
-}
-catch(e){
-  console.log(e);
-  message.channel.send("Hata Oluştu");
-}
-
-
-
 })
- 
+
